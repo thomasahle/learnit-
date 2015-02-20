@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Learnit control panel
 // @version      0.1
-// @description  Because I don't like that fucking forcedownload
-// @author       You
+// @description  Various tools for improving learnit
+// @author       Thomas Dybdahl Ahle
 // @include      https://learnit.itu.dk/*
 // ==/UserScript==
 
@@ -54,6 +54,19 @@ button.addEventListener('click', function() {
     for (var i = 0; i < trs.length; i++) {
         tbody.appendChild(trs[i]);
     }
+    console.log('done');
+});
+panel.appendChild(button);
+
+// Fullscreen
+var button = document.createElement("button");
+button.appendChild(document.createTextNode("Fullscreen"));
+button.addEventListener('click', function() {
+    var form = document.querySelector(".quickgradingform");
+    form.style.position = 'absolute';
+    form.style.top = '0';
+    form.style.left = '0';
+    form.style['z-index'] = '100';
     console.log('done');
 });
 panel.appendChild(button);
