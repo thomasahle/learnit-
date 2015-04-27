@@ -9,8 +9,8 @@ A python command line tool for working with learnit.
 
 <pre>
 $ <b>python3 learnit_cmd.py</b>
-email: 
-password: 
+email: <b>...@itu.dk</b>
+password: <b>...</b>
 Logging in...
 Hello Thomas Dybdahl Ahle!
 > <b>help</b>
