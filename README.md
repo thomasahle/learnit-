@@ -19,8 +19,8 @@ Supported commands:
    list assignments [course_id]
    grade [assignment_id]
    exit
-> <br>list courses</b>
-You have 2 courses:
+> <b>list courses</b>
+You have 1 courses:
 0) 3003023: Algorithms and Data Structures (Spring 2015)
 > <b>list assignments 3003023</b>
 Found 9 assignments:
