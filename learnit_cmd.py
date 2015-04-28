@@ -3,7 +3,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 from html.parser import HTMLParser
 from collections import namedtuple
 import re, tempfile, subprocess, zipfile, os, io, json, html, textwrap
-import itertools, operator
+import itertools, operator, logging
 
 regsafe = lambda s: re.sub(r'([\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|])', r'\\\1', s)
 
@@ -31,29 +31,48 @@ class FormParser(HTMLParser):
             self.action = attrs['action']
         if tag == 'input' and 'name' in attrs:
             self.data[attrs['name']] = attrs['value']
-def parseForm(html):
+def parseForm(data):
     parser = FormParser()
-    parser.feed(html)
+    parser.feed(data)
     return parser
+
+class LoggingOpener:
+    def __init__(self, opener):
+        self.opener = opener
+        self.logger = logging.getLogger('weblogger')
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(logging.FileHandler('log'))
+    def open(self, url, data=None, binary=False):
+        self.logger.debug('Requesting ' + url)
+        if data:
+            self.logger.debug('Data ' + data.decode('utf-8'))
+        resp = self.opener.open(url, data)
+        self.logger.debug('Reponse headers: ' + repr(resp.getheaders()))
+        payload = resp.read()
+        if not binary:
+            payload = payload.decode('utf-8')
+            self.logger.debug('Response payload: ' + payload)
+        else:
+            self.logger.debug('Binary response')
+        return payload, resp
 
 class Learnit:
     def __init__(self):
-        self.opener = urllib.request.build_opener(
+        opener = urllib.request.build_opener(
             urllib.request.HTTPRedirectHandler(),
             urllib.request.HTTPHandler(debuglevel=1),
             urllib.request.HTTPSHandler(debuglevel=1),
             urllib.request.HTTPCookieProcessor()
         )
-        self.opener.addheaders = [
+        opener.addheaders = [
             ('User-agent', ('learnit.py'))
         ]
-        self.cur_html = ""
-        self.cur_resp = {}
+        self.opener = LoggingOpener(opener)
 
     def login(self, email, password):
         ''' Log in to learnit and return the response for 'learnit.itu.dk/my' '''
         # Step 1, get login form
-        response = self.opener.open('http://learnit.itu.dk/auth/saml')
+        _, response = self.opener.open('http://learnit.itu.dk/auth/saml')
         
         # Step 2, submit login form
         query_string = urlparse(response.geturl()).query
@@ -65,63 +84,55 @@ class Learnit:
             'password':password,
             'wp-submit':'Login'
         }).encode('utf-8')
-        response = self.opener.open('https://wayf.itu.dk/module.php/core/loginuserpass.php?', data=login_data)
+        data, _ = self.opener.open('https://wayf.itu.dk/module.php/core/loginuserpass.php?', data=login_data)
         
         # Step 3, send saml to wayf
-        data = response.read().decode('utf-8')
         if 'Incorrect username or password' in data:
-            self.cur_html = data
-            self.cur_resp = response
-            return INVALID_PASSWORD
+            return None, INVALID_PASSWORD
         parser = FormParser()
         parser.feed(data)
         saml_data = urlencode(parser.data).encode('utf-8')
         assert parser.action == 'https://wayf.wayf.dk/module.php/saml/sp/saml2-acs.php/wayf.wayf.dk'
         assert parser.method == 'post'
-        response = self.opener.open(parser.action, data=saml_data)
+        data, _ = self.opener.open(parser.action, data=saml_data)
         
         # Step4, send saml to learnit
-        data = response.read().decode('utf-8')
         parser = FormParser()
         parser.feed(data)
         saml_data = urlencode(parser.data).encode('utf-8')
         assert parser.action == 'https://learnit.itu.dk/simplesaml/module.php/saml/sp/saml2-acs.php/default-sp'
         assert parser.method == 'post'
-        response = self.opener.open(parser.action, data=saml_data)
+        data, response = self.opener.open(parser.action, data=saml_data)
         
         assert response.geturl() == 'https://learnit.itu.dk/my/'
-        self.cur_html = response.read().decode('utf-8')
-        self.cur_resp = response
-        return SUCCESS
+        return data, SUCCESS
 
-    def get_logininfo(self):
+    def get_logininfo(self, data):
         regex = '<div class="logininfo">You are logged in as <a.*?>(.*?)</a>'
-        return re.search(regex, self.cur_html).group(1)
+        return re.search(regex, data).group(1)
 
-    def list_my_courses(self):
+    def list_my_courses(self, data):
         regex = r'<a title="([^"]+)" href="{}(\d+)">'.format(regsafe(course_view))
-        return {name:title for title,name in re.findall(regex, self.cur_html)}
+        return {name:title for title,name in re.findall(regex, data)}
 
     def list_assignments(self, course_id):
-        response = self.opener.open('{}{}'.format(course_view, course_id))
-        html = response.read().decode('utf-8')
+        data, _ = self.opener.open('{}{}'.format(course_view, course_id))
         regex = r'<li class="activity assign modtype_assign " id="module-(\d+)">' +\
                 r'.*?<span class="instancename">(.*?)</?span'
-        return {name:title for name,title in re.findall(regex, html)}
+        return {name:title for name,title in re.findall(regex, data)}
 
     def list_submissions(self, assign_id):
         cache_name = '.'+assign_id+'.cached'
         if os.path.exists(cache_name):
             with open(cache_name) as f:
-                html = f.read()
+                data = f.read()
         else:
-            response = self.opener.open(assign_view.format(assign_id, 'grading', '0'))
-            html = response.read().decode('utf-8')
+            data, _ = self.opener.open(assign_view.format(assign_id, 'grading', '0'))
             with open(cache_name, 'w') as f:
-                f.write(html)
+                f.write(data)
         # Todo: 'Default group'
         subs = {}
-        for row, dat in re.findall(r'<tr[^<>]+?id="mod_assign_grading_r(\d+)"(.*?)</tr>', html, re.DOTALL):
+        for row, dat in re.findall(r'<tr[^<>]+?id="mod_assign_grading_r(\d+)"(.*?)</tr>', data, re.DOTALL):
             match = re.search(r'>Group (.+?)<', dat)
             group = match.group(1) if match else 'Default group'
             match = re.search(r'selected">(.*?)</option>', dat)
@@ -134,21 +145,20 @@ class Learnit:
     def download_attachments(self, context_id, filenames):
         clean_name = lambda s: re.sub('[^\w\d\.]', '_', re.sub('\?.*|.*/', '', s))
         for filename in filenames:
-            response = self.opener.open(sub_file.format(context_id) + filename)
+            data, _ = self.opener.open(sub_file.format(context_id) + filename, binary=True)
             name = clean_name(filename)
             if name.endswith('.zip'):
-                with zipfile.ZipFile(io.BytesIO(response.read())) as zf:
+                with zipfile.ZipFile(io.BytesIO(data)) as zf:
                     for zname in zf.namelist():
                         if zname.endswith('/'):
                             continue
                         with zf.open(zname) as f:
                             yield (clean_name(zname), f.read())
             else:
-                yield (name, response.read())
+                yield (name, data)
 
     def show_submission(self, assign_id, row):
-        response = self.opener.open(save_grade.format(assign_id, row))
-        data = response.read().decode('utf-8')
+        data, _ = self.opener.open(save_grade.format(assign_id, row))
         form = parseForm(data)
         match = re.search(r'M\.core_comment\.init\(Y, ({.*?})', data)
         com_json = json.loads(match.group(1) if match else '{}')
@@ -186,8 +196,8 @@ class Learnit:
             'component': 'assignsubmission_comments',
             'page': '0'
         }).encode('utf-8')
-        response = self.opener.open(page_comment_ajax, data=com_data)
-        return json.loads(response.read().decode('utf-8'))['list']
+        data, _ = self.opener.open(page_comment_ajax, data=com_data)
+        return json.loads(data)['list']
 
     def save_grade(self, assign_id, row, form, grade, feedback):
         submit_data = urlencode({
@@ -207,8 +217,7 @@ class Learnit:
             'applytoall': '1',
             'savegrade': 'Save changes'
         }).encode('utf-8')
-        response = self.opener.open(form.action, data=submit_data)
-        data = response.read().decode('utf-8')
+        data, _ = self.opener.open(form.action, data=submit_data)
         if 'The grade changes were saved' in data:
             return SUCCESS
         return UKNOWN_ERROR
@@ -264,7 +273,7 @@ def grade_dialog(learnit, assign_id, row):
         feedback = ''.join(line for line in f if not re.match('\s*#', line))
     if feedback.strip():
         grade = ''
-        abbrv = {'a':'2', 'n':'1', 'o':'-1'}
+        abbrv = {'a':'1', 'n':'2', 'o':'-1'}
         while grade not in abbrv:
             grade = input('[A]pproved/[N]ot approved/N[o] grade: ').lower()
         er = learnit.save_grade(assign_id, row, sub.form, abbrv[grade], feedback.strip())
@@ -288,8 +297,11 @@ def grading_browser(learnit, assign_id):
         if cmd in ('exit', 'quit', 'done'):
             break
         if cmd.upper() in subs:
-            row, _, _ = subs[cmd.upper()]
-            grade_dialog(learnit, assign_id, row)
+            row, _, substat = subs[cmd.upper()]
+            if substat == 'No submission':
+                print("Can't grade group with no submission")
+            else:
+                grade_dialog(learnit, assign_id, row)
             continue
         if cmd == 'list':
             groups = sorted((substat, grade, len(group), group)
@@ -313,8 +325,8 @@ def grading_browser(learnit, assign_id):
             continue
         print("Unknown command {}".format(repr(cmd)))
 
-def cmd_browser(learnit):
-    print("Hello {}!".format(learnit.get_logininfo()))
+def cmd_browser(learnit, data):
+    print("Hello {}!".format(learnit.get_logininfo(data)))
     while True:
         line = input("> ").strip()
         if not line:
@@ -332,10 +344,10 @@ def cmd_browser(learnit):
                 for x_id, x_name in sorted(id_name.items()):
                     print(" "*indent + "{}: {}".format(x_id, x_name))
             if args and args[0] == 'courses':
-                show_list(learnit.list_my_courses())
+                show_list(learnit.list_my_courses(data))
                 continue
             if len(args) == 1 and args[0] == 'assignments':
-                for course_id, course_name in sorted(learnit.list_my_courses().items()):
+                for course_id, course_name in sorted(learnit.list_my_courses(data).items()):
                     print("{}: {}".format(course_id, course_name))
                     show_list(learnit.list_assignments(course_id), indent=3)
                 continue
@@ -355,7 +367,7 @@ if __name__ == '__main__':
     if os.path.exists(passwd_file):
         with open(passwd_file) as f:
             passwd = json.loads(f.read())
-        learnit.login(passwd['username'], passwd['password'])
+        data, er = learnit.login(passwd['username'], passwd['password'])
     else:
-        login_browser(learnit)
-    cmd_browser(learnit)
+        data = login_browser(learnit)
+    cmd_browser(learnit, data)
