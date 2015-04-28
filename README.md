@@ -13,16 +13,16 @@ email: <b>...@itu.dk</b>
 password: <b>...</b>
 Logging in...
 Hello Thomas Dybdahl Ahle!
-> <b>help</b>
+<br>&gt; <b>help</b>
 Supported commands:
    list courses
    list assignments [course_id]
    grade [assignment_id]
    exit
-> <b>list courses</b>
+<br>&gt; <b>list courses</b>
 You have 1 courses:
 0) 3003023: Algorithms and Data Structures (Spring 2015)
-> <b>list assignments 3003023</b>
+<br>&gt; <b>list assignments 3003023</b>
 Found 9 assignments:
 41508: Connected Components Warmup
 41889: GiantBook
@@ -33,17 +33,27 @@ Found 9 assignments:
 44705: Word Ladders
 44952: Spanning USA
 45103: Super Vector Mario!
-> <b>grade 44952</b>
+<br>&gt; <b>grade 44952</b>
 Loading table...
 Found 63 groups.
-group> <b>A</b>
---------------------------------------------------
-Grade: Approved
-Feedback: Your input reading is slightly too complicated for anyone to know for sure whether it works. Other that that everything looks fine!
+<br>grade&gt; <b>list</b>
+No submission, No grade:
+AG, AH, AP, BB, BE, BH, BL, BQ, Default group
+Submitted for grading, Approved:
+A, B, C, D, AA, AB
+Submitted for grading, No grade:
+E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AC, AD, AE, AF, AI, AJ, AK, AL, AM, AN, AQ, AT, AU, AW, AX, AZ, BA, BC, BD, BF, BI, BJ, BM, BN, BO, BP
+<br>grade&gt; <b>E</b>
+Grade: -
+Feedback:
+Last modified: Thursday, 23 April 2015, 15:21
 Submission status: Submitted for grading
-Grading status: Graded
-Last modified: Friday, 24 April 2015, 08:12
-Comments:
-Files: 29767_Route66AAEN.java, 29767_Spanning_USA_AAEN.pdf
-Show files? [y/N]:
-</pre>
+Grading status: Unknown
+Files: MST.java, SpanningUSA_final.pdf
+Show files? [y/N]: <b>y</b> <i>files open, and feedback is written in vim</i>
+[A]pproved/[N]ot approved/N[o] grade: <b>a</b>
+Changes saved
+<br>grade&gt; <b>E</b>
+Grade: Approved
+Feedback: Nice and short code, but Kruskal is not O(E+N)
+...
