@@ -132,7 +132,7 @@ class Learnit:
         return subs
 
     def download_attachments(self, context_id, filenames):
-        clean_name = lambda s: re.sub('[^\w\d\.]', '_', re.sub('\?.*', '', s))
+        clean_name = lambda s: re.sub('[^\w\d\.]', '_', re.sub('\?.*|.*/', '', s))
         for filename in filenames:
             response = self.opener.open(sub_file.format(context_id) + filename)
             name = clean_name(filename)
@@ -157,11 +157,11 @@ class Learnit:
         match = re.search(r'>Comments \((\d+)\)<', data)
         comments = self.show_comments(form.data['sesskey'], com_json) if match and match.group(1) != '0' else []
         # Status
-        match = re.search('class="submissionstatussubmitted.*?>(.*?)</td>', data)
+        match = re.search('>Submission status</td>.+?>(.*?)</td>', data, re.DOTALL)
         sub_status = match.group(1) if match else 'Unknown'
-        match = re.search('class="submissiongraded.*?>(.*?)</td>', data)
+        match = re.search('>Grading status</td>.+?>(.*?)</td>', data, re.DOTALL)
         grad_status = match.group(1) if match else 'Unknown'
-        match = re.search('Last modified</td>.*?<td.*?>(.*?)</td>', data, re.DOTALL)
+        match = re.search('>Last modified</td>.+?>(.*?)</td>', data, re.DOTALL)
         last_mod = match.group(1) if match else 'Unknown'
         # Files
         file_url = regsafe(sub_file.format(context_id))
@@ -299,10 +299,17 @@ def grading_browser(learnit, assign_id):
                 print(', '.join(map(operator.itemgetter(3), gs)))
             continue
         if cmd == 'update':
+            for f in os.listdir('.'):
+                if os.path.isfile(f) and f.endswith('.cached'):
+                    os.unlink(f)
             grading_browser(learnit, assign_id)
             break
         if cmd == 'help':
-            print('There is no help.')
+            print('Supported commands:')
+            print('   list         - List what groups are available for grading')
+            print('   [group_name] - Open the grader for a particular group')
+            print('   update       - Update the table used for `list`')
+            print('   exit         - Return to the main menu')
             continue
         print("Unknown command {}".format(repr(cmd)))
 
@@ -315,23 +322,25 @@ def cmd_browser(learnit):
         cmd, *args = line.split(' ')
         if cmd == 'help':
             print('Supported commands:')
-            print('   list courses')
-            print('   list assignments [course_id]')
-            print('   grade [assignment_id]')
-            print('   exit')
+            print('   list courses                 - List available courses')
+            print('   list assignments [course_id] - List available assignments')
+            print('   grade [assignment_id]        - Open the grading menu')
+            print('   exit                         - Exit the program')
             continue
         if cmd == 'list':
+            def show_list(id_name, indent=0):
+                for x_id, x_name in sorted(id_name.items()):
+                    print(" "*indent + "{}: {}".format(x_id, x_name))
             if args and args[0] == 'courses':
-                courses = sorted(learnit.list_my_courses().items())
-                print("You have {} courses:".format(len(courses)))
-                for i, (name, title) in enumerate(courses):
-                    print("{}) {}: {}".format(i, name, title))
+                show_list(learnit.list_my_courses())
+                continue
+            if len(args) == 1 and args[0] == 'assignments':
+                for course_id, course_name in sorted(learnit.list_my_courses().items()):
+                    print("{}: {}".format(course_id, course_name))
+                    show_list(learnit.list_assignments(course_id), indent=3)
                 continue
             if len(args) == 2 and args[0] == 'assignments' and args[1].isdigit():
-                assignments = sorted(learnit.list_assignments(args[1]).items())
-                print("Found {} assignments:".format(len(assignments)))
-                for name, title in assignments:
-                    print("{}: {}".format(name, title))
+                show_list(learnit.list_assignments(args[1]))
                 continue
         if cmd == 'grade':
             if len(args) == 1 and args[0].isdigit():
