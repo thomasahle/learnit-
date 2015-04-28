@@ -15,10 +15,10 @@ Logging in...
 Hello Thomas Dybdahl Ahle!
 <br>&gt; <b>help</b>
 Supported commands:
-   list courses
-   list assignments [course_id]
-   grade [assignment_id]
-   exit
+   list courses                 - List available courses
+   list assignments [course_id] - List available assignments
+   grade [assignment_id]        - Open the grading menu
+   exit                         - Exit the program
 <br>&gt; <b>list courses</b>
 You have 1 courses:
 0) 3003023: Algorithms and Data Structures (Spring 2015)
@@ -36,6 +36,12 @@ Found 9 assignments:
 <br>&gt; <b>grade 44952</b>
 Loading table...
 Found 63 groups.
+<br>grade&gt; <b>help</b>
+Supported commands:
+   list         - List what groups are available for grading
+   [group_name] - Open the grader for a particular group
+   update       - Update the table used for `list`
+   exit         - Return to the main menu
 <br>grade&gt; <b>list</b>
 No submission, No grade:
 AG, AH, AP, BB, BE, BH, BL, BQ, Default group
@@ -48,7 +54,7 @@ Grade: -
 Feedback:
 Last modified: Thursday, 23 April 2015, 15:21
 Submission status: Submitted for grading
-Grading status: Unknown
+Grading status: Not graded
 Files: MST.java, SpanningUSA_final.pdf
 Show files? [y/N]: <b>y</b> <i>files open, and feedback is written in vim</i>
 [A]pproved/[N]ot approved/N[o] grade: <b>a</b>
