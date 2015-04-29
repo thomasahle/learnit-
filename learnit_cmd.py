@@ -57,7 +57,7 @@ def grade_dialog(client, assign_id, row):
    print('Grade:', learnit.grade_to_name[sub.grade])
    print('Feedback:', sub.feedback)
    print('Last modified:', sub.last_mod)
-   print('Submission status:', sub.sub_status)
+   print('Submission status:', learnit.substat_to_name[sub.sub_status])
    print('Grading status:', sub.grad_status)
    if sub.comments:
       print('Comments:')
@@ -83,7 +83,7 @@ def grade_dialog(client, assign_id, row):
    f = tempfile.NamedTemporaryFile(delete=False)
    edit_message = 'Please enter a feedback message the submission. Lines starting '+\
       'with "#" will be ignored, and an empty message aborts the grading.\n'+\
-      'Current feedback: {}\nCurrent grade: {}\n'.format(sub.feedback, sub.grade)
+      'Current feedback: {}\nCurrent grade: {}\n'.format(sub.feedback, learnit.grade_to_name[sub.grade])
    wrapped = '\n\n'+'\n'.join(line for par in edit_message.splitlines() for line in textwrap.wrap(par, width=60))
    f.write(textwrap.indent(wrapped, '# ').encode('utf-8'))
    f.close()
@@ -153,8 +153,8 @@ class MainDialog(Dialog):
    def __init__(self, client, data):
       Dialog.__init__(self, '> ')
       self.add_command('list courses$', self.list_courses_cmd, 'list courses', 'List available courses')
-      self.add_command('list assignments ?(\d+)?$', self.list_assignments_cmd, 'list assignments [course id]', 'List available assignments')
-      self.add_command('grade (\d+)$', self.grade_cmd, 'grade [assignment id]', 'Exit the program')
+      self.add_command('list assignments ?(\d+)?|la$', self.list_assignments_cmd, 'list assignments [course id]', 'List available assignments')
+      self.add_command('(?:grade|g)\s*(\d+)$', self.grade_cmd, 'grade [assignment id]', 'Exit the program')
       self.client = client
       self.data = data
    
