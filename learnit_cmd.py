@@ -4,6 +4,7 @@
 import re, tempfile, subprocess, os, json, textwrap
 import itertools, operator
 import learnit
+from itertools import starmap
 
 regsafe = lambda s: re.sub(r'([\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|])', r'\\\1', s)
 
@@ -50,9 +51,7 @@ class Dialog:
          else:
             print('Unknown command', repr(cmd))
 
-
-def grade_dialog(client, assign_id, row):
-   sub = client.show_submission(assign_id, row)
+def show_sub(sub):
    print(separator_line)
    print('Grade:', learnit.grade_to_name[sub.grade])
    print('Feedback:', sub.feedback)
@@ -65,6 +64,10 @@ def grade_dialog(client, assign_id, row):
          print('   {fullname} - {time}'.format(**comment))
          nohtml = re.sub(r'<.*?>', '', comment['content'])
          print('   {}'.format(nohtml))
+
+def grade_dialog(client, assign_id, row):
+   sub = client.show_submission(assign_id, row)
+   show_sub(sub)
    # Show files
    attachments = list(client.download_attachments(sub.context_id, sub.files))
    print('Files:', ', '.join(name for name, _ in attachments))
@@ -110,6 +113,7 @@ class AssignmentDialog(Dialog):
    def __init__(self, client, aid):
       Dialog.__init__(self, aid+'> ')
       self.add_command('([a-zA-Z]{1,2})$', self.grade_cmd, '[group name]', 'Open the grader for a particular group')
+      self.add_command('show ([a-zA-Z]{1,2})', self.show_grade_cmd, 'show [group name]', 'Show current grade and feedback for group')
       self.add_command('list$', self.list_cmd, 'list', 'List what groups are available for grading')
       self.add_command('list emails?$', self.list_email_cmd, 'list email', 'List itu email-addresses of groups')
       self.add_command('update$', self.update_cmd, 'update', 'Update table of submissions')
@@ -123,29 +127,33 @@ class AssignmentDialog(Dialog):
       Dialog.run(self)
 
    def grade_cmd(self, group):
-      row, _, substat, emails = self.subs[group.upper()]
-      if substat == learnit.HAS_SUBMIT:
-         grade_dialog(self.client, self.aid, row)
+      row = self.subs[group.upper()]
+      if row.substat == learnit.HAS_SUBMIT:
+         grade_dialog(self.client, self.aid, row.row)
       else:
          print("Can't grade groups with no submissions.")
 
+   def show_grade_cmd(self, group):
+      row = self.subs[group.upper()]
+      show_sub(client.show_submission(self.aid, row.row))
+
    def list_cmd(self):
-      groups = sorted((substat, grade, len(group), group)
-         for group, (_, grade, substat, emails) in self.subs.items())
+      groups = sorted((row.substat, row.grade, len(group), group)
+         for group, row in self.subs.items())
       for (substat, grade), gs in itertools.groupby(groups, key=operator.itemgetter(0,1)):
          print('{}, {}:'.format(learnit.substat_to_name[substat], learnit.grade_to_name[grade]))
-         print(', '.join(map(operator.itemgetter(3), gs)))
+         print('\n'.join(textwrap.wrap(', '.join(map(operator.itemgetter(3), gs)), width=50)))
 
    def list_email_cmd(self):
-      for group, (_, grade, substat, emails) in sorted(self.subs.items()):
-         print(group, '; '.join(emails))
+      for group, row in sorted(self.subs.items(), key=lambda k_v:(len(k_v[0]),k_v[0])):
+         print(group, '; '.join(starmap('{} <{}>'.format, sorted(zip(row.names, row.emails)))))
 
    def update_cmd(self):
       print('Deleting files named *.cached...')
       for f in os.listdir('.'):
          if os.path.isfile(f) and f.endswith('.cached'):
             os.unlink(f)
-      grading_browser(self.client, self.aid)
+      self.run()
       return True
 
 

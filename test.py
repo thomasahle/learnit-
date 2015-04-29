@@ -46,8 +46,8 @@ class TestSuccess(unittest.TestCase):
       sub = next(sub
          for cid in self.client.list_my_courses(self.data_my).keys()
          for aid in self.client.list_assignments(cid).keys()
-         for row, _, _, _ in self.client.list_submissions(aid).values()
-         for sub in [self.client.show_submission(aid, row)])
+         for row in self.client.list_submissions(aid).values()
+         for sub in [self.client.show_submission(aid, row.row)])
       self.assertEqual(type(sub), learnit.Submission)
       self.assertEqual(type(sub.comments), list)
 
@@ -55,17 +55,17 @@ class TestSuccess(unittest.TestCase):
       attachment = next(att
          for cid in self.client.list_my_courses(self.data_my).keys()
          for aid in self.client.list_assignments(cid).keys()
-         for row, _, _, _ in self.client.list_submissions(aid).values()
-         for sub in [self.client.show_submission(aid, row)]
+         for row in self.client.list_submissions(aid).values()
+         for sub in [self.client.show_submission(aid, row.row)]
          for att in self.client.download_attachments(sub.context_id, sub.files))
       self.assertEqual(type(attachment), learnit.Attachment)
 
    def test_save(self):
-      aid, row = next((aid, row)
+      aid, row = next((aid, row.row)
          for cid in self.client.list_my_courses(self.data_my).keys()
          for aid in self.client.list_assignments(cid).keys()
-         for row, _, substat, _ in self.client.list_submissions(aid).values()
-         if substat == learnit.HAS_SUBMIT)
+         for row in self.client.list_submissions(aid).values()
+         if row.substat == learnit.HAS_SUBMIT)
       sub = self.client.show_submission(aid, row)
       self.assertEqual(sub.sub_status, learnit.HAS_SUBMIT)
       self.assertTrue(len(sub.files) > 0)

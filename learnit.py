@@ -14,6 +14,7 @@ Submission = namedtuple('Submission',
    'files', 'grade', 'feedback', 'comments', 'context_id',
    'grade_to_code'])
 Attachment = namedtuple('Attachment', ['filename', 'data'])
+Row = namedtuple('Row', ['row', 'grade','substat', 'emails', 'names'])
 
 regsafe = lambda s: re.sub(r'([\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|])', r'\\\1', s)
 course_view = "https://learnit.itu.dk/course/view.php?id="
@@ -42,6 +43,9 @@ class TableParser(HTMLParser):
    def handle_data(self, data):
       if self.intd:
          self.tables[-1][-1][-1].append(data)
+   def feed(self, data):
+      HTMLParser.feed(self, data)
+      return self
 
 class FormParser(HTMLParser):
    def __init__(self):
@@ -54,11 +58,9 @@ class FormParser(HTMLParser):
          self.action = attrs['action']
       if tag == 'input' and 'name' in attrs:
          self.data[attrs['name']] = attrs['value']
-
-def parseForm(data):
-   parser = FormParser()
-   parser.feed(data)
-   return parser
+   def feed(self, data):
+      HTMLParser.feed(self, data)
+      return self
 
 class LoggingOpener:
    def __init__(self, opener):
@@ -113,16 +115,14 @@ class Learnit:
       # Step 3, send saml to wayf
       if 'Incorrect username or password' in data:
          return None, INVALID_PASSWORD
-      parser = FormParser()
-      parser.feed(data)
+      parser = FormParser().feed(data)
       saml_data = urlencode(parser.data).encode('utf-8')
       assert parser.action == 'https://wayf.wayf.dk/module.php/saml/sp/saml2-acs.php/wayf.wayf.dk'
       assert parser.method == 'post'
       data, _ = self.opener.open(parser.action, data=saml_data)
       
       # Step4, send saml to learnit
-      parser = FormParser()
-      parser.feed(data)
+      parser = FormParser().feed(data)
       saml_data = urlencode(parser.data).encode('utf-8')
       if parser.action == 'https://wayf.wayf.dk/module.php/consent/noconsent.php':
          return None, WAYF_REDIRECT # Wayf has sent us to the consent page. Not supported yet.
@@ -167,14 +167,18 @@ class Learnit:
          substat = name_to_substat[match.group(1).lower()]
          match = re.search(r'c3">(.*?)</td>', dat)
          email = match.group(1) if match else 'Unknown'
+         match = re.search(r'c2"><a.*?>(.*?)</a></td>', dat)
+         name = match.group(1) if match else 'Unknown'
          if group not in subs:
-            subs[group] = (row, grade, substat, [email])
-         else: subs[group][-1].append(email)
+            subs[group] = Row(row, grade, substat, [email], [name])
+         else:
+            subs[group].emails.append(email)
+            subs[group].names.append(name)
       return subs
 
    def show_submission(self, assign_id, row):
       data, _ = self.opener.open(save_grade.format(assign_id, row))
-      form = parseForm(data)
+      form = FormParser().feed(data)
       if 'Nothing has been submitted for this assignment' in data:
          return Submission(form, NO_SUBMIT, 'Not graded', 'Unknown', [], NO_GRADE, '', [], None, None)
       match = re.search(r'M\.core_comment\.init\(Y, ({.*?})', data)
