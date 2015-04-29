@@ -1,3 +1,4 @@
 .password
 *.cached
 log
+__pycache__/
