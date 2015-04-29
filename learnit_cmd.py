@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import re, tempfile, subprocess, os, json, textwrap
-import itertools, operator
+import itertools, operator, unicodedata
 import learnit
 from itertools import starmap
 
@@ -117,9 +117,10 @@ class AssignmentDialog(Dialog):
       self.add_command('list$', self.list_cmd, 'list', 'List what groups are available for grading')
       self.add_command('list emails?$', self.list_email_cmd, 'list email', 'List itu email-addresses of groups')
       self.add_command('update$', self.update_cmd, 'update', 'Update table of submissions')
+      self.add_command('find (.+)', self.find_group_cmd, 'find [name]', 'Search for groups with a certain member')
       self.client = client
       self.aid = aid
-   
+
    def run(self):
       print('Loading table...')
       self.subs = client.list_submissions(self.aid)
@@ -155,6 +156,14 @@ class AssignmentDialog(Dialog):
             os.unlink(f)
       self.run()
       return True
+
+   def find_group_cmd(self, name):
+      normal = lambda s: ''.join(c for c in unicodedata.normalize('NFD', s)
+            if unicodedata.category(c) != 'Mn').lower().strip()
+      for group, row in self.subs.items():
+         if any(normal(word).startswith(normal(name))
+               for rname in row.names for word in rname.split()):
+            print(group, ', '.join(row.names))
 
 
 class MainDialog(Dialog):

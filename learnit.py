@@ -5,7 +5,7 @@ from collections import namedtuple
 import re, zipfile, os, io, json, html
 import logging
 
-SUCCESS, INVALID_PASSWORD, UKNOWN_ERROR, WAYF_REDIRECT = range(4)
+SUCCESS, INVALID_PASSWORD, UNKNOWN_ERROR, WAYF_REDIRECT = range(4)
 NO_GRADE, APPROVED, NOT_APPROVED = range(3)
 HAS_SUBMIT, NO_SUBMIT, UKNOWN_SUBMIT = range(3)
 
@@ -124,9 +124,11 @@ class Learnit:
       # Step4, send saml to learnit
       parser = FormParser().feed(data)
       saml_data = urlencode(parser.data).encode('utf-8')
-      if parser.action == 'https://wayf.wayf.dk/module.php/consent/noconsent.php':
+      if parser.action == 'https://wayf.wayf.dk/module.php/consent/getconsent.php':
          return None, WAYF_REDIRECT # Wayf has sent us to the consent page. Not supported yet.
-      assert parser.action == 'https://learnit.itu.dk/simplesaml/module.php/saml/sp/saml2-acs.php/default-sp'
+      if parser.action != 'https://learnit.itu.dk/simplesaml/module.php/saml/sp/saml2-acs.php/default-sp':
+         print('Got action =', parser.action)
+         return None, UNKNOWN_ERROR
       assert parser.method == 'post'
       data, response = self.opener.open(parser.action, data=saml_data)
       
