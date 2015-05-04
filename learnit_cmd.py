@@ -170,8 +170,8 @@ class AssignmentDialog(Dialog):
 class MainDialog(Dialog):
    def __init__(self, client, data):
       Dialog.__init__(self, '> ')
-      self.add_command('list courses$', self.list_courses_cmd, 'list courses', 'List available courses')
-      self.add_command('list assignments ?(\d+)?|la$', self.list_assignments_cmd, 'list assignments [course id]', 'List available assignments')
+      self.add_command('list courses$|lc$', self.list_courses_cmd, 'list courses', 'List available courses')
+      self.add_command('list assignments ?(\d+)?$|la$', self.list_assignments_cmd, 'list assignments [course id]', 'List available assignments')
       self.add_command('(?:grade|g)\s*(\d+)$', self.grade_cmd, 'grade [assignment id]', 'Exit the program')
       self.add_command('table\s*(\d+)$', self.table_cmd, 'table [course id]', 'Print assignment status table for course')
       self.client = client
@@ -203,9 +203,16 @@ class MainDialog(Dialog):
       print('Loading tables...')
       aids = sorted(self.client.list_assignments(courseid), key=int)
       subss = ThreadPool().map(client.list_submissions, aids)
+      logs = ThreadPool().starmap(client.get_log, ((courseid,aid) for aid in aids))
       cols = [[group for _, group in sorted((len(g),g) for g in subss[0].keys())]]
-      for subs in subss:
-         groups = sorted((len(group), group, row.substat, row.grade) for group, row in subs.items())
+      for log, subs in zip(logs, subss):
+         groups = sorted((len(group), group, row) for group, row in subs.items())
+         log = list(log)
+         def grader(studids):
+            graders = [(ga.time, ga.grader) for studid in studids for ga in log if ga.studid == studid]
+            _, grader = sorted(graders, reverse=True)[0] if graders else (0, 'Uknown')
+            return grader.split()[-1]
+         cols.append([grader(row.studids) for _, _, row in groups])
          def label(substat, grade):
             if substat == learnit.NO_SUBMIT: return '-'
             if substat == learnit.HAS_SUBMIT:
@@ -213,11 +220,12 @@ class MainDialog(Dialog):
                if grade == learnit.NOT_APPROVED: return 'N'
                if grade == learnit.NO_GRADE: return '.'
             return '?'
-         cols.append([label(substat, grade) for _, _, substat, grade in groups])
-      rows = [['Group']+aids] + list(zip(*cols))
+         cols.append([label(row.substat, row.grade) for _, _, row in groups])
+      rows = [['Group'] + sum(([aid,'-'] for aid in aids),[])] + list(zip(*cols))
+      colwidths = [max(len(cell) for cell in col) for col in zip(*rows)]
       for row in rows:
          for i, cell in enumerate(row):
-            print(cell.ljust(len(rows[0][i])), end='\t')
+            print(cell.ljust(colwidths[i]), end='\t')
          print()
 
 def login_dialog(client):

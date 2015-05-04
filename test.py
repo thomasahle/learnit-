@@ -83,5 +83,12 @@ class TestSuccess(unittest.TestCase):
       # Feedback shouldn't change
       self.assertEqual(new_new_sub.feedback, sub.feedback)
 
+   def test_log(self):
+      grade_action = next(grade_action
+         for cid in self.client.list_my_courses(self.data_my).keys()
+         for aid in self.client.list_assignments(cid).keys()
+         for grade_action in self.client.get_log(cid, aid))
+      self.assertEqual(type(grade_action), learnit.GradeAction)
+
 if __name__ == '__main__':
    unittest.main()

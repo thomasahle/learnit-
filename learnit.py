@@ -2,7 +2,8 @@ import urllib.request
 from urllib.parse import urlparse, parse_qs, urlencode
 from html.parser import HTMLParser
 from collections import namedtuple
-import re, zipfile, os, io, json, html
+import re, zipfile, os, io, json, html, csv
+import dateutil.parser
 import logging
 
 SUCCESS, INVALID_PASSWORD, UNKNOWN_ERROR, WAYF_REDIRECT = range(4)
@@ -14,7 +15,8 @@ Submission = namedtuple('Submission',
    'files', 'grade', 'feedback', 'comments', 'context_id',
    'grade_to_code'])
 Attachment = namedtuple('Attachment', ['filename', 'data'])
-Row = namedtuple('Row', ['row', 'grade','substat', 'emails', 'names'])
+Row = namedtuple('Row', ['row', 'grade','substat', 'emails', 'names', 'studids'])
+GradeAction = namedtuple('GradeAction', ['time', 'grader', 'studid'])
 
 regsafe = lambda s: re.sub(r'([\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|])', r'\\\1', s)
 course_view = "https://learnit.itu.dk/course/view.php?id="
@@ -22,6 +24,7 @@ assign_view = "https://learnit.itu.dk/mod/assign/view.php?id={}&action={}&group=
 sub_file = "https://learnit.itu.dk/pluginfile.php/{}/assignsubmission_file/submission_files/"
 save_grade = "https://learnit.itu.dk/mod/assign/view.php?id={}&rownum={}&action=grade"
 page_comment_ajax = "https://learnit.itu.dk/comment/comment_ajax.php"
+page_log = "https://learnit.itu.dk/report/log/index.php"
 name_to_grade = {'no grade': NO_GRADE, '-': NO_GRADE, 'approved': APPROVED, 'not approved': NOT_APPROVED}
 name_to_substat = {'nothing has been submitted for this assignment': NO_SUBMIT, 'submitted for grading': HAS_SUBMIT, 'no submission': NO_SUBMIT}
 grade_to_name = {NO_GRADE: 'No grade', APPROVED: 'Approved', NOT_APPROVED: 'Not approved'}
@@ -173,11 +176,14 @@ class Learnit:
          email = match.group(1) if match else 'Unknown'
          match = re.search(r'_c2"><a.*?>(.*?)</a></td>', dat)
          name = match.group(1) if match else 'Unknown'
+         match = re.search(r'id="selectuser_(\d+)"', dat)
+         studid = match.group(1) if match else 'Unknown'
          if group not in subs:
-            subs[group] = Row(row, grade, substat, [email], [name])
+            subs[group] = Row(row, grade, substat, [email], [name], [studid])
          else:
             subs[group].emails.append(email)
             subs[group].names.append(name)
+            subs[group].studids.append(studid)
       return subs
 
    def show_submission(self, assign_id, row):
@@ -266,3 +272,24 @@ class Learnit:
       if 'The grade changes were saved' in data:
          return SUCCESS
       return UKNOWN_ERROR
+
+   def get_log(self, courseid, assignid):
+      get_data = urlencode({
+         'chooselog': '1',
+         'showusers': '1',
+         'showcourses': '0',
+         'id': courseid,
+         'group': '',
+         'user': '',
+         'date': '0',
+         'modid': assignid,
+         'modaction': '-view',
+         'logformat': 'downloadascsv'
+      })
+      data, _ = self.opener.open(page_log + '?' + get_data)
+      rows = list(csv.reader(io.StringIO(data), dialect='excel-tab'))
+      assert rows[1] == ['Course', 'Time', 'IP address', 'User full name', 'Action', 'Information']
+      for _, time, _, grader, action, info in rows[2:]:
+         if re.match(r'assign grade submission \(.+\)$', action):
+            studid = re.match(r'Grade student: \(id=(\d+), fullname=.+\)\.', info).group(1)
+            yield GradeAction(dateutil.parser.parse(time), grader, studid)
