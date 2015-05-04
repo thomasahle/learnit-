@@ -158,18 +158,20 @@ class Learnit:
          data, _ = self.opener.open(assign_view.format(assign_id, 'grading', '0'))
          with open(cache_name, 'w') as f:
             f.write(data)
-      # Todo: 'Default group'
+      if not 'Group submission status' in data:
+         print('Warning: Groups appear to be disabled for assignment ' + assign_id + '. ' +
+               'This may cause learnit- to fail.')
       subs = {}
       for row, dat in re.findall(r'<tr[^<>]+?id="mod_assign_grading_r(\d+)"(.*?)</tr>', data, re.DOTALL):
          match = re.search(r'>Group (.+?)<', dat)
          group = match.group(1) if match else 'Default group'
          match = re.search(r'selected">(.*?)</option>', dat)
          grade = name_to_grade[match.group(1).lower()] if match else NO_GRADE
-         match = re.search(r'c6">(.*?)</td>', dat)
+         match = re.search(r'_c6">(.*?)</td>', dat)
          substat = name_to_substat[match.group(1).lower()]
-         match = re.search(r'c3">(.*?)</td>', dat)
+         match = re.search(r'_c3">(.*?)</td>', dat)
          email = match.group(1) if match else 'Unknown'
-         match = re.search(r'c2"><a.*?>(.*?)</a></td>', dat)
+         match = re.search(r'_c2"><a.*?>(.*?)</a></td>', dat)
          name = match.group(1) if match else 'Unknown'
          if group not in subs:
             subs[group] = Row(row, grade, substat, [email], [name])

@@ -5,6 +5,7 @@ import re, tempfile, subprocess, os, json, textwrap
 import itertools, operator, unicodedata
 import learnit
 from itertools import starmap
+from multiprocessing.pool import ThreadPool
 
 regsafe = lambda s: re.sub(r'([\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|])', r'\\\1', s)
 
@@ -172,6 +173,7 @@ class MainDialog(Dialog):
       self.add_command('list courses$', self.list_courses_cmd, 'list courses', 'List available courses')
       self.add_command('list assignments ?(\d+)?|la$', self.list_assignments_cmd, 'list assignments [course id]', 'List available assignments')
       self.add_command('(?:grade|g)\s*(\d+)$', self.grade_cmd, 'grade [assignment id]', 'Exit the program')
+      self.add_command('table\s*(\d+)$', self.table_cmd, 'table [course id]', 'Print assignment status table for course')
       self.client = client
       self.data = data
    
@@ -197,6 +199,26 @@ class MainDialog(Dialog):
    def grade_cmd(self, aid):
       AssignmentDialog(self.client, aid).run()
 
+   def table_cmd(self, courseid):
+      print('Loading tables...')
+      aids = sorted(self.client.list_assignments(courseid), key=int)
+      subss = ThreadPool().map(client.list_submissions, aids)
+      cols = [[group for _, group in sorted((len(g),g) for g in subss[0].keys())]]
+      for subs in subss:
+         groups = sorted((len(group), group, row.substat, row.grade) for group, row in subs.items())
+         def label(substat, grade):
+            if substat == learnit.NO_SUBMIT: return '-'
+            if substat == learnit.HAS_SUBMIT:
+               if grade == learnit.APPROVED: return 'A'
+               if grade == learnit.NOT_APPROVED: return 'N'
+               if grade == learnit.NO_GRADE: return '.'
+            return '?'
+         cols.append([label(substat, grade) for _, _, substat, grade in groups])
+      rows = [['Group']+aids] + list(zip(*cols))
+      for row in rows:
+         for i, cell in enumerate(row):
+            print(cell.ljust(len(rows[0][i])), end='\t')
+         print()
 
 def login_dialog(client):
    er = learnit.INVALID_PASSWORD
