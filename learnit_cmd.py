@@ -66,9 +66,14 @@ def show_sub(sub):
          nohtml = re.sub(r'<.*?>', '', comment['content'])
          print('   {}'.format(nohtml))
 
-def grade_dialog(client, assign_id, row):
-   sub = client.show_submission(assign_id, row)
+def grade_dialog(client, cid, aid, row):
+   sub = client.show_submission(aid, row.row)
    show_sub(sub)
+   # Graders
+   log = client.get_log(cid, aid)
+   graders = [(ga.time, ga.grader) for ga in log if ga.studid in row.studids]
+   for time, grader in graders:
+      print (time, grader)
    # Show files
    attachments = list(client.download_attachments(sub.context_id, sub.files))
    print('Files:', ', '.join(name for name, _ in attachments))
@@ -99,7 +104,7 @@ def grade_dialog(client, assign_id, row):
       abbrv = {'a':learnit.APPROVED, 'n':learnit.NOT_APPROVED, 'o':learnit.NO_GRADE}
       while grade not in abbrv:
          grade = input('[A]pproved/[N]ot approved/N[o] grade: ').lower()
-      er = client.save_grade(assign_id, row, sub.form, abbrv[grade], feedback.strip(), sub.grade_to_code)
+      er = client.save_grade(aid, row.row, sub.form, abbrv[grade], feedback.strip(), sub.grade_to_code)
       if er == learnit.SUCCESS:
          print('Changes saved')
       else: print('Error')
@@ -111,7 +116,7 @@ def grade_dialog(client, assign_id, row):
 
 
 class AssignmentDialog(Dialog):
-   def __init__(self, client, aid):
+   def __init__(self, client, cid, aid):
       Dialog.__init__(self, aid+'> ')
       self.add_command('([a-zA-Z]{1,2})$', self.grade_cmd, '[group name]', 'Open the grader for a particular group')
       self.add_command('show ([a-zA-Z]{1,2})', self.show_grade_cmd, 'show [group name]', 'Show current grade and feedback for group')
@@ -120,6 +125,7 @@ class AssignmentDialog(Dialog):
       self.add_command('update$', self.update_cmd, 'update', 'Update table of submissions')
       self.add_command('find (.+)', self.find_group_cmd, 'find [name]', 'Search for groups with a certain member')
       self.client = client
+      self.cid = cid
       self.aid = aid
 
    def run(self):
@@ -129,9 +135,13 @@ class AssignmentDialog(Dialog):
       Dialog.run(self)
 
    def grade_cmd(self, group):
-      row = self.subs[group.upper()]
+      group = group.upper()
+      if group not in self.subs:
+         print('No group with name', group)
+         return
+      row = self.subs[group]
       if row.substat == learnit.HAS_SUBMIT:
-         grade_dialog(self.client, self.aid, row.row)
+         grade_dialog(self.client, self.cid, self.aid, row)
       else:
          print("Can't grade groups with no submissions.")
 
@@ -170,34 +180,31 @@ class AssignmentDialog(Dialog):
 class MainDialog(Dialog):
    def __init__(self, client, data):
       Dialog.__init__(self, '> ')
-      self.add_command('list courses$|lc$', self.list_courses_cmd, 'list courses', 'List available courses')
-      self.add_command('list assignments ?(\d+)?$|la$', self.list_assignments_cmd, 'list assignments [course id]', 'List available assignments')
+      self.add_command('list assignments|la$', self.list_assignments_cmd, 'list assignments', 'List available assignments from courses')
       self.add_command('(?:grade|g)\s*(\d+)$', self.grade_cmd, 'grade [assignment id]', 'Exit the program')
       self.add_command('table\s*(\d+)$', self.table_cmd, 'table [course id]', 'Print assignment status table for course')
       self.client = client
       self.data = data
+      self.courses = []
    
    def run(self):
       print("Hello {}!".format(self.client.get_logininfo(self.data)))
+      courses = client.list_my_courses(self.data)
+      assignments = ThreadPool().map(self.client.list_assignments, courses.keys())
+      self.courses = [(cid, cname, list(ass.items()))
+         for (cid, cname), ass in zip(courses.items(), assignments)]
       Dialog.run(self)
 
-   def __show_list(self, id_name, indent=0):
-      for x_id, x_name in sorted(id_name.items()):
-         print(" "*indent + "{}: {}".format(x_id, x_name))
-
-   def list_courses_cmd(self):
-      self.__show_list(self.client.list_my_courses(self.data))
-
-   def list_assignments_cmd(self, courseid):
-      if courseid is not None:
-         self.__show_list(self.client.list_assignments(courseid))
-      else:
-         for course_id, course_name in sorted(client.list_my_courses(data).items()):
-            print("{}: {}".format(course_id, course_name))
-            self.__show_list(self.client.list_assignments(course_id), indent=3)
+   def list_assignments_cmd(self):
+      for cid, cname, assignments in sorted(self.courses):
+         print("{}: {}".format(cid, cname))
+         for aid, aname in sorted(assignments):
+            print(" "*3 + "{}: {}".format(aid, aname))
 
    def grade_cmd(self, aid):
-      AssignmentDialog(self.client, aid).run()
+      cid = next(cid for cid,_,assignments in self.courses
+         if aid in (aid_ for aid_,_ in assignments))
+      AssignmentDialog(self.client, cid, aid).run()
 
    def table_cmd(self, courseid):
       print('Loading tables...')
@@ -209,7 +216,7 @@ class MainDialog(Dialog):
          groups = sorted((len(group), group, row) for group, row in subs.items())
          log = list(log)
          def grader(studids):
-            graders = [(ga.time, ga.grader) for studid in studids for ga in log if ga.studid == studid]
+            graders = [(ga.time, ga.grader) for ga in log if ga.studid in studids]
             _, grader = sorted(graders, reverse=True)[0] if graders else (0, 'Uknown')
             return grader.split()[-1]
          cols.append([grader(row.studids) for _, _, row in groups])
@@ -227,6 +234,7 @@ class MainDialog(Dialog):
          for i, cell in enumerate(row):
             print(cell.ljust(colwidths[i]), end='\t')
          print()
+
 
 def login_dialog(client):
    er = learnit.INVALID_PASSWORD
