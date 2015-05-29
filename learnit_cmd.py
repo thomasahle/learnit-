@@ -6,6 +6,7 @@ import itertools, operator, unicodedata
 import learnit
 from itertools import starmap
 from multiprocessing.pool import ThreadPool
+from collections import defaultdict
 
 regsafe = lambda s: re.sub(r'([\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|])', r'\\\1', s)
 
@@ -183,6 +184,8 @@ class MainDialog(Dialog):
       self.add_command('list assignments|la$', self.list_assignments_cmd, 'list assignments', 'List available assignments from courses')
       self.add_command('(?:grade|g)\s*(\d+)$', self.grade_cmd, 'grade [assignment id]', 'Exit the program')
       self.add_command('table\s*(\d+)$', self.table_cmd, 'table [course id]', 'Print assignment status table for course')
+      self.add_command('results?\s*(\d+)$', self.result_cmd, 'result [course id]', 'Number of assignments per group')
+      self.add_command('tograde?\s*(\d+)$', self.tograde_cmd, 'tograde [course id]', 'List what tasks are currently ungraded')
       self.client = client
       self.data = data
       self.courses = []
@@ -205,6 +208,38 @@ class MainDialog(Dialog):
       cid = next(cid for cid,_,assignments in self.courses
          if aid in (aid_ for aid_,_ in assignments))
       AssignmentDialog(self.client, cid, aid).run()
+
+   def result_cmd(self, courseid):
+      print('Loading tables...')
+      aids = sorted(self.client.list_assignments(courseid), key=int)
+      subss = ThreadPool().map(client.list_submissions, aids)
+      ids = set(groupid for subs in subss for groupid in subs.keys())
+      result = defaultdict(list)
+      for groupid in ids:
+         r = sum(1 for subs in subss if subs[groupid].grade == learnit.APPROVED)
+         result[r].append(groupid)
+      for (r, groups) in sorted(result.items()):
+         print('{} Approves:'.format(r))
+         for groupid in groups:
+            pend = sum(1 for subs in subss if subs[groupid].substat == learnit.HAS_SUBMIT and subs[groupid].grade == learnit.NO_GRADE)
+            noac = sum(1 for subs in subss if subs[groupid].substat == learnit.HAS_SUBMIT and subs[groupid].grade == learnit.NOT_APPROVED)
+            nosu = sum(1 for subs in subss if subs[groupid].substat == learnit.NO_SUBMIT)
+            tags = ['{} {}'.format(n,s) for n,s in ((pend,'pending'),(noac,'not approved'),(nosu,'not submitted')) if n]
+            tagstring = '' if not tags else '({})'.format(', '.join(tags))
+            print(groupid+':\t', '; '.join(subss[0][groupid].emails), tagstring)
+         print()
+
+   def tograde_cmd(self, courseid):
+      print('Loading tables...')
+      aids = sorted(self.client.list_assignments(courseid), key=int)
+      subss = ThreadPool().map(client.list_submissions, aids)
+      for aid, subs in zip(aids, subss):
+         groupids = [groupid for groupid, sub in subs.items() if sub.substat == learnit.HAS_SUBMIT and sub.grade == learnit.NO_GRADE]
+         if groupids:
+            print('Assignment:', aid)
+            for groupid in groupids:
+               print('Group', groupid)
+            print()
 
    def table_cmd(self, courseid):
       print('Loading tables...')

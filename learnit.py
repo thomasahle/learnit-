@@ -153,6 +153,7 @@ class Learnit:
       return {name:title for name,title in re.findall(regex, data)}
 
    def list_submissions(self, assign_id):
+      ''' Returns a dictionary of group_id -> Row object '''
       cache_name = '.'+assign_id+'.cached'
       if os.path.exists(cache_name):
          with open(cache_name) as f:
