@@ -37,6 +37,8 @@ class TestSuccess(unittest.TestCase):
             self.assertTrue(tables.students)
             self.assertTrue(tables.submissions)
             self.assertTrue(tables.assignments)
+            for assignment in tables.assignments:
+               self.assertTrue(len(assignment.title) > 1)
             self.assertTrue(tables.submissions)         
             self.assertEqual(len(tables.teachers), 7)
             self.assertEqual(len(tables.teachers)+len(tables.students), 146)

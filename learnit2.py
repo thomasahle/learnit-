@@ -6,6 +6,7 @@ import re, zipfile, os, io, json, html, csv
 from multiprocessing.pool import ThreadPool
 import dateutil.parser
 import logging
+import pickle
 
 # Types
 Tables = namedtuple('Tables', [
@@ -84,9 +85,9 @@ Comment = namedtuple('Comment', [
 ])
 
 SUCCESS, INVALID_PASSWORD, UNKNOWN_ERROR, WAYF_REDIRECT = range(4)
-NO_GRADE, APPROVED, NOT_APPROVED = range(3)
+NO_GRADE, APPROVED, NOT_APPROVED, NO_SUBMISSION = range(4)
 ROLE_STUDENT, ROLE_TEACHER, ROLE_TA, ROLE_ALL = 5, 3, 9, 0
-grade_to_name = {NO_GRADE: 'No grade', APPROVED: 'Approved', NOT_APPROVED: 'Not approved'}
+grade_to_name = {NO_GRADE: 'Pending', APPROVED: 'Approved', NOT_APPROVED: 'Not approved', NO_SUBMISSION: 'No submission'}
 ITU = 'https://learnit.itu.dk'
 
 class FormParser(HTMLParser):
@@ -194,7 +195,7 @@ class Learnit:
          lambda cid_: self.__get_person_table(cid_, ROLE_STUDENT),
          self.__get_log_table])
       # Create shallow tables
-      default_group = Group(None, [], [])
+      default_group = Group('No group', [], [])
       groups = [Group(name, [], [])
          for name, pids in gros if pids] \
          + [default_group]
@@ -245,8 +246,8 @@ class Learnit:
    def __get_assignment_table(self, cid):
       ''' cid -> [(aid, title)] '''
       data, _ = self.opener.open(ITU+'/course/view.php?id='+cid)
-      regex = r'<li class=".*?assign " id="module-(\d+)">.*?<.*?>(.*?)<'
-      return re.findall(regex, data)
+      regex = r'<li class=".*?assign " id="module-(\d+)">.*?<span.*?>(.*?)<'
+      return re.findall(regex, data, re.DOTALL)
 
    def __get_group_table(self, cid):
       ''' cid -> [(group_name, [pid])] '''

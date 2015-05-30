@@ -4,9 +4,11 @@
 import re, tempfile, subprocess, os, json, textwrap
 import itertools, operator, unicodedata
 import learnit2
+import datetime
 from itertools import starmap
 from multiprocessing.pool import ThreadPool
 from collections import defaultdict
+import pickle
 
 regsafe = lambda s: re.sub(r'([\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|])', r'\\\1', s)
 
@@ -59,52 +61,87 @@ class MainDialog(Dialog):
       Dialog.__init__(self, '> ')
       self.add_command('list assignments|la$', self.list_assignments_cmd, 'list assignments', 'List available assignments from courses')
       self.add_command('results?$', self.result_cmd, 'result', 'Number of assignments per group')
+      self.add_command('status (.+)$', self.status_cmd, 'status [group]', 'What\'s going on for that gorup')
+      self.add_command('update$', self.update_cmd, 'update', 'Reloads cached tables')
       self.cid = cid
       self.client = client
-   
+
    def run(self):
-      print('Loading tables...')
-      self.tables = client.get_tables(self.cid)
+      self.tables = self.__get_tables()
       Dialog.run(self)
+
+   def __get_tables(self):
+      print('Loading tables...')
+      cache_name = '.{}.cached'.format(self.cid)
+      if os.path.exists(cache_name):
+         with open(cache_name, 'rb') as f:
+            tables = pickle.load(f)
+      else:
+         tables = self.client.get_tables(self.cid)
+         with open(cache_name, 'wb') as f:
+            pickle.dump(tables, f)
+      return tables
+
+   def update_cmd(self):
+      print('Deleting files named *.cached...')
+      for f in os.listdir('.'):
+         if os.path.isfile(f) and f.endswith('.cached'):
+            os.unlink(f)
+      self.tables = self.__get_tables()
 
    def list_assignments_cmd(self):
       for (aid, title) in sorted(self.tables.assignments):
          print("{}: {}".format(aid, title))
 
+   def status_cmd(self, group_str):
+      groups = [group for group in self.tables.groups
+            if group.name.lower() == group_str.lower()]
+      if not groups:
+         print('No such group')
+         return
+      group = groups[0]
+      for submission in group.submissions:
+         aid, title, _ = submission.assignment
+         grade = self.__get_submission_grade(submission)
+         print(aid, title, '({})'.format(learnit2.grade_to_name[grade]).lower())
+
+   def __get_submission_grade(self, submission):
+      if not submission.submit_actions:
+         return learnit2.NO_SUBMISSION
+      actions = submission.grade_actions + submission.submit_actions
+      default_action = learnit2.GradeAction(datetime.datetime(1,1,1), learnit2.NO_GRADE, None, None)
+      last = max(actions + [default_action])
+      if actions and type(last) == learnit2.GradeAction:
+         return last.grade
+      if actions and type(last) == learnit2.SubmitAction:
+         return learnit2.NO_GRADE
+
    def result_cmd(self):
       result = defaultdict(list)
       for group in self.tables.groups:
-         acc, nac, pen, nos = 0, 0, 0, 0
-         for submission in group.submissions:
-            if not submission.submit_actions:
-               nos += 1
-               continue
-            actions = submission.grade_actions + submission.submit_actions
-            if actions and type(min(actions)) == learnit2.GradeAction:
-               if min(actions).grade == learnit2.APPROVED: acc += 1
-               if min(actions).grade == learnit2.NOT_APPROVED: nac += 1
-               if min(actions).grade == learnit2.NO_GRADE: pen += 1
-            if actions and type(min(actions)) == learnit2.SubmitAction:
-               pen += 1
-         result[acc].append((group, nac, pen, nos))
+         grades = list(map(self.__get_submission_grade, group.submissions))
+         acc = grades.count(learnit2.APPROVED)
+         result[acc].append((group, grades))
       for acc, groups in sorted(result.items()):
          print('{} Approves:'.format(acc))
-         for group, nac, pen, nos in groups:
-            tags = ['{} {}'.format(n,s) for n,s in ((pen,'pending'),(nac,'not approved'),(nos,'not submitted')) if n]
+         for group, grades in groups:
+            tags = []
+            for grade in (learnit2.NO_GRADE, learnit2.NOT_APPROVED, learnit2.NO_SUBMISSION):
+               if grade in grades:
+                  tags.append('{} {}'.format(grades.count(grade), learnit2.grade_to_name[grade]))
             tagstring = '' if not tags else '({})'.format(', '.join(tags))
-            name = group.name if group.name else 'Default Group'
-            print(name+':\t', '; '.join(s.person.email for s in group.students), tagstring)
+            print(group.name+':\t', '; '.join(s.person.email for s in group.students), tagstring)
          print()
 
 
 def login_dialog(client):
-   er = learnit.INVALID_PASSWORD
-   while er != learnit.SUCCESS:
+   er = learnit2.INVALID_PASSWORD
+   while er != learnit2.SUCCESS:
       username = input('email: ')
       password = input('password: ')
       print('Logging in...')
       data, er = client.login(username, password)
-      if er == learnit.INVALID_PASSWORD:
+      if er == learnit2.INVALID_PASSWORD:
          print("Invalid password!")
    return data
 
