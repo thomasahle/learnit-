@@ -48,9 +48,7 @@ class Dialog:
          for (regex, fun) in self.cmds:
             match = regex.match(cmd)
             if match:
-               res = fun(*match.groups())
-               if res:
-                  return
+               fun(*match.groups())
                break
          else:
             print('Unknown command', repr(cmd))
