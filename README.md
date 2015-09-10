@@ -5,7 +5,7 @@ Tested with tampermonkey for Chrome.
 ![screenshot](http://i.imgur.com/csCTEQ8.png)
 
 # learnit_cmd.py
-A python command line tool for working with learnit.
+A python command line tool for working with learnit. Requires dateutil: https://pypi.python.org/pypi/python-dateutil/
 
 <pre>
 $ <b>python3 learnit_cmd.py</b>
