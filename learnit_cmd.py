@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: UTF-8 -*-
+# -*- coding: utf-8 -*-
 
 import re, tempfile, subprocess, os, json, textwrap
 import itertools, operator, unicodedata
@@ -272,14 +272,16 @@ class MainDialog(Dialog):
 
 
 def login_dialog(client):
+   data = None
    er = learnit.INVALID_PASSWORD
    while er != learnit.SUCCESS:
       username = input('email: ')
       password = input('password: ')
       print('Logging in...')
-      er = client.login(username, password)
+      data,er = client.login(username, password)
       if er == learnit.INVALID_PASSWORD:
          print("Invalid password!")
+   return data
 
 
 if __name__ == '__main__':

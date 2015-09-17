@@ -136,10 +136,11 @@ class Learnit:
       data, response = self.opener.open(parser.action, data=saml_data)
       
       assert response.geturl() == 'https://learnit.itu.dk/my/'
+      assert data is not None
       return data, SUCCESS
 
    def get_logininfo(self, data):
-      regex = '<div class="logininfo">You are logged in as <a.*?>(.*?)</a>'
+      regex = '<em><i class="fa fa-user"></i>(.*?)</em>'
       return re.search(regex, data).group(1)
 
    def list_my_courses(self, data):

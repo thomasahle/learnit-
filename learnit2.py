@@ -179,7 +179,7 @@ class Learnit:
       return self.__get_profile(data), SUCCESS
 
    def __get_profile(self, data):
-      regex = r'You are logged in as <a href=".*?profile.php\?id=(\d+)".*?>(.*?)</a>'
+      regex = r'<em><i class="fa fa-user"></i>(.*?)</em>'
       pid, name = re.search(regex, data).groups()
       person = Person(pid, name, None, None, None)
       regex = r'<li>\s*<a title=".*?" href=".*?course/view\.php\?id=(\d+)">(.*?)</a>'
